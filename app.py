@@ -2,8 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, time
-import pytz
 
 st.set_page_config(layout="wide")
 st.title("Scanner – Setup Roberson (Diário + Confirmação Semanal)")
@@ -55,7 +53,6 @@ def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
 
     return k_smooth, d
 
-# -------- DMI / ADX padrão TradingView (Wilder / RMA)
 def dmi_adx_tradingview(df, period=14):
 
     high = df["High"]
@@ -98,18 +95,6 @@ def preparar_semanal(df):
 
     return semanal
 
-def ajustar_para_ultimo_candle_fechado(df):
-
-    tz = pytz.timezone("America/Sao_Paulo")
-    agora = datetime.now(tz)
-    hora_fechamento = time(17, 0)
-
-    if agora.weekday() < 5 and agora.time() < hora_fechamento:
-        if len(df) > 1:
-            df = df.iloc[:-1]
-
-    return df
-
 # =========================================================
 # Scanner
 # =========================================================
@@ -131,12 +116,6 @@ if st.button("Rodar Scanner"):
             )
 
             if df.empty or len(df) < 120:
-                progress.progress((i + 1) / len(ativos_scan))
-                continue
-
-            df = ajustar_para_ultimo_candle_fechado(df)
-
-            if len(df) < 120:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
@@ -166,10 +145,6 @@ if st.button("Rodar Scanner"):
             if not (cond_ema and cond_stoch and cond_dmi):
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
-
-            # -------------------------
-            # Semanal – apenas DI+ > DI-
-            # -------------------------
 
             semanal = preparar_semanal(df)
 
