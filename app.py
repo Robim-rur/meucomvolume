@@ -113,7 +113,6 @@ def indice_candle_fechado():
     tz = pytz.timezone("America/Sao_Paulo")
     agora = datetime.now(tz).time()
 
-    # >>> ajuste solicitado: 19:00
     if agora >= time(19, 0):
         return -1
     else:
@@ -154,7 +153,7 @@ if st.button("Rodar Scanner"):
                 continue
 
             # =========================
-            # Indicadores diários
+            # Diário
             # =========================
 
             df["EMA69"] = ema(df["Close"], 69)
@@ -193,6 +192,11 @@ if st.button("Rodar Scanner"):
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
 
+            # Estocástico semanal
+            kw, dw = stochastic_kd(semanal)
+            semanal["K"] = kw
+            semanal["D"] = dw
+
             di_pw, di_mw, _ = dmi_adx_tradingview(semanal)
             semanal["DIp"] = di_pw
             semanal["DIm"] = di_mw
@@ -203,9 +207,11 @@ if st.button("Rodar Scanner"):
 
             row_w = semanal.iloc[idx]
 
-            cond_sem = row_w["DIp"] > row_w["DIm"]
+            cond_sem_dmi   = row_w["DIp"] > row_w["DIm"]
+            cond_sem_stoch = row_w["K"] > row_w["D"]
 
-            if not cond_sem:
+            # >>> agora o semanal exige DMI + ESTOCÁSTICO
+            if not (cond_sem_dmi and cond_sem_stoch):
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
@@ -214,16 +220,20 @@ if st.button("Rodar Scanner"):
                 "Data": df.index[idx].date(),
 
                 "Close": round(float(row["Close"]), 2),
-                "K": round(float(row["K"]), 2),
-                "D": round(float(row["D"]), 2),
+                "K (D)": round(float(row["K"]), 2),
+                "D (D)": round(float(row["D"]), 2),
 
                 "DI+ (D)": round(float(row["DIp"]), 2),
                 "DI- (D)": round(float(row["DIm"]), 2),
                 "ADX (D)": round(float(row["ADX"]), 2),
 
+                "K (W)": round(float(row_w["K"]), 2),
+                "D (W)": round(float(row_w["D"]), 2),
+                "K > D (W)": cond_sem_stoch,
+
                 "DI+ (W)": round(float(row_w["DIp"]), 2),
                 "DI- (W)": round(float(row_w["DIm"]), 2),
-                "DI+ > DI- (W)": cond_sem,
+                "DI+ > DI- (W)": cond_sem_dmi,
 
                 "Vol MA20": round(float(row["Vol_MA20"]), 0),
                 "Vol MA50": round(float(row["Vol_MA50"]), 0),
