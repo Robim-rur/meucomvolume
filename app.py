@@ -2,22 +2,43 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime, time
+import pytz
 
 st.set_page_config(layout="wide")
-st.title("Diagnóstico – Setup Roberson (TradingView)")
+st.title("Scanner – Setup Roberson (Diário + Semanal / TradingView)")
 
-# ativos que você confirmou que passaram no gráfico
-ativos_teste = [
-    "BPAC11.SA",
-    "GOLD11.SA",
-    "MXRF11.SA",
-    "RANI3.SA",
-    "SLCE3.SA",
-    "VALE3.SA"
-]
+# =========================================================
+# LISTA FIXA DE ATIVOS
+# =========================================================
+
+ativos_scan = sorted(set([
+"RRRP3.SA","ALOS3.SA","ALPA4.SA","ABEV3.SA","ARZZ3.SA","ASAI3.SA","AZUL4.SA","B3SA3.SA","BBAS3.SA","BBDC3.SA",
+"BBDC4.SA","BBSE3.SA","BEEF3.SA","BPAC11.SA","BRAP4.SA","BRFS3.SA","BRKM5.SA","CCRO3.SA","CMIG4.SA","CMIN3.SA",
+"COGN3.SA","CPFE3.SA","CPLE6.SA","CRFB3.SA","CSAN3.SA","CSNA3.SA","CYRE3.SA","DXCO3.SA","EGIE3.SA","ELET3.SA",
+"ELET6.SA","EMBR3.SA","ENEV3.SA","ENGI11.SA","EQTL3.SA","EZTC3.SA","FLRY3.SA","GGBR4.SA","GOAU4.SA","GOLL4.SA",
+"HAPV3.SA","HYPE3.SA","ITSA4.SA","ITUB4.SA","JBSS3.SA","KLBN11.SA","LREN3.SA","LWSA3.SA","MGLU3.SA","MRFG3.SA",
+"MRVE3.SA","MULT3.SA","NTCO3.SA","PETR3.SA","PETR4.SA","PRIO3.SA","RADL3.SA","RAIL3.SA","RAIZ4.SA","RENT3.SA",
+"RECV3.SA","SANB11.SA","SBSP3.SA","SLCE3.SA","SMTO3.SA","SUZB3.SA","TAEE11.SA","TIMS3.SA","TOTS3.SA","TRPL4.SA",
+"UGPA3.SA","USIM5.SA","VALE3.SA","VIVT3.SA","VIVA3.SA","WEGE3.SA","YDUQ3.SA","AURE3.SA","BHIA3.SA","CASH3.SA",
+"CVCB3.SA","DIRR3.SA","ENAT3.SA","GMAT3.SA","IFCM3.SA","INTB3.SA","JHSF3.SA","KEPL3.SA","MOVI3.SA","ORVR3.SA",
+"PETZ3.SA","PLAS3.SA","POMO4.SA","POSI3.SA","RANI3.SA","RAPT4.SA","STBP3.SA","TEND3.SA","TUPY3.SA",
+"BRSR6.SA","CXSE3.SA","AAPL34.SA","AMZO34.SA","GOGL34.SA","MSFT34.SA","TSLA34.SA","META34.SA","NFLX34.SA",
+"NVDC34.SA","MELI34.SA","BABA34.SA","DISB34.SA","PYPL34.SA","JNJB34.SA","PGCO34.SA","KOCH34.SA","VISA34.SA",
+"WMTB34.SA","NIKE34.SA","ADBE34.SA","AVGO34.SA","CSCO34.SA","COST34.SA","CVSH34.SA","GECO34.SA","GSGI34.SA",
+"HDCO34.SA","INTC34.SA","JPMC34.SA","MAEL34.SA","MCDP34.SA","MDLZ34.SA","MRCK34.SA","ORCL34.SA","PEP334.SA",
+"PFIZ34.SA","PMIC34.SA","QCOM34.SA","SBUX34.SA","TGTB34.SA","TMOS34.SA","TXN34.SA","UNHH34.SA","UPSB34.SA",
+"VZUA34.SA","ABTT34.SA","AMGN34.SA","AXPB34.SA","BAOO34.SA","CATP34.SA","HONB34.SA","BOVA11.SA","IVVB11.SA",
+"SMAL11.SA","HASH11.SA","GOLD11.SA","GARE11.SA","HGLG11.SA","XPLG11.SA","VILG11.SA","BRCO11.SA","BTLG11.SA",
+"XPML11.SA","VISC11.SA","HSML11.SA","MALL11.SA","KNRI11.SA","JSRE11.SA","PVBI11.SA","HGRE11.SA","MXRF11.SA",
+"KNCR11.SA","KNIP11.SA","CPTS11.SA","IRDM11.SA","DIVO11.SA","NDIV11.SA","SPUB11.SA"
+]))
+
+# =========================================================
+# Funções auxiliares
+# =========================================================
 
 def ajustar_colunas(df):
-
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -27,14 +48,11 @@ def ajustar_colunas(df):
 
     return df
 
-
 def ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
-
 def rma(series, period):
     return series.ewm(alpha=1/period, adjust=False).mean()
-
 
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
 
@@ -46,7 +64,6 @@ def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
     d = k_smooth.rolling(d_period).mean()
 
     return k_smooth, d
-
 
 def dmi_adx_tradingview(df, period=14):
 
@@ -78,7 +95,6 @@ def dmi_adx_tradingview(df, period=14):
 
     return plus_di, minus_di, adx
 
-
 def preparar_semanal(df):
 
     semanal = df.resample("W-FRI").agg({
@@ -92,11 +108,29 @@ def preparar_semanal(df):
     return semanal
 
 
-if st.button("Rodar diagnóstico"):
+def indice_candle_fechado():
 
-    linhas = []
+    tz = pytz.timezone("America/Sao_Paulo")
+    agora = datetime.now(tz).time()
 
-    for ticker in ativos_teste:
+    if agora >= time(18, 30):
+        return -1
+    else:
+        return -2
+
+
+# =========================================================
+# Scanner
+# =========================================================
+
+if st.button("Rodar Scanner"):
+
+    resultados = []
+    progress = st.progress(0.0)
+
+    idx = indice_candle_fechado()
+
+    for i, ticker in enumerate(ativos_scan):
 
         try:
 
@@ -109,16 +143,18 @@ if st.button("Rodar diagnóstico"):
             )
 
             if df.empty:
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             df = ajustar_colunas(df)
 
             if len(df) < 120:
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            # ===============================
+            # =========================
             # Indicadores diários
-            # ===============================
+            # =========================
 
             df["EMA69"] = ema(df["Close"], 69)
 
@@ -131,19 +167,27 @@ if st.button("Rodar diagnóstico"):
             df["DIm"] = di_m
             df["ADX"] = adx
 
-            # ===============================
-            # Volume
-            # ===============================
-
             df["Vol_MA20"] = df["Volume"].rolling(20).mean()
             df["Vol_MA50"] = df["Volume"].rolling(50).mean()
 
-            # candle diário fechado
-            row = df.iloc[-2]
+            if len(df.dropna()) < abs(idx):
+                progress.progress((i + 1) / len(ativos_scan))
+                continue
 
-            # ===============================
+            row = df.iloc[idx]
+
+            cond_ema   = row["Close"] > row["EMA69"]
+            cond_stoch = row["K"] > row["D"]
+            cond_dmi   = row["DIp"] > row["DIm"]
+            cond_vol   = row["Vol_MA20"] > row["Vol_MA50"]
+
+            if not (cond_ema and cond_stoch and cond_dmi and cond_vol):
+                progress.progress((i + 1) / len(ativos_scan))
+                continue
+
+            # =========================
             # Semanal
-            # ===============================
+            # =========================
 
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
@@ -152,48 +196,39 @@ if st.button("Rodar diagnóstico"):
             semanal["DIp"] = di_pw
             semanal["DIm"] = di_mw
 
-            row_w = semanal.iloc[-2]
+            if len(semanal.dropna()) < abs(idx):
+                progress.progress((i + 1) / len(ativos_scan))
+                continue
 
-            linhas.append({
+            row_w = semanal.iloc[idx]
 
+            if not (row_w["DIp"] > row_w["DIm"]):
+                progress.progress((i + 1) / len(ativos_scan))
+                continue
+
+            resultados.append({
                 "Ativo": ticker,
-                "Data diário": df.index[-2].date(),
-
-                "Close > EMA69": row["Close"] > row["EMA69"],
-                "K > D": row["K"] > row["D"],
-                "DI+ > DI- (D)": row["DIp"] > row["DIm"],
-                "DI+ > DI- (W)": row_w["DIp"] > row_w["DIm"],
-
-                # >>> NOVO FILTRO DE VOLUME
-                "Vol MA20 > MA50": row["Vol_MA20"] > row["Vol_MA50"],
-
-                # ===============================
-                # Valores
-                # ===============================
-
+                "Data": df.index[idx].date(),
                 "Close": round(float(row["Close"]), 2),
-                "EMA69": round(float(row["EMA69"]), 2),
-
                 "K": round(float(row["K"]), 2),
                 "D": round(float(row["D"]), 2),
-
-                "DI+ D": round(float(row["DIp"]), 2),
-                "DI- D": round(float(row["DIm"]), 2),
-
-                "DI+ W": round(float(row_w["DIp"]), 2),
-                "DI- W": round(float(row_w["DIm"]), 2),
-
-                # >>> valores do volume
-                "Volume": int(row["Volume"]),
+                "DI+ (D)": round(float(row["DIp"]), 2),
+                "DI- (D)": round(float(row["DIm"]), 2),
+                "ADX (D)": round(float(row["ADX"]), 2),
                 "Vol MA20": round(float(row["Vol_MA20"]), 0),
                 "Vol MA50": round(float(row["Vol_MA50"]), 0),
+                "Vol MA20 > MA50": cond_vol
             })
 
-        except Exception as e:
-            linhas.append({
-                "Ativo": ticker,
-                "Erro": str(e)
-            })
+        except Exception:
+            pass
 
-    df_diag = pd.DataFrame(linhas)
-    st.dataframe(df_diag, use_container_width=True)
+        progress.progress((i + 1) / len(ativos_scan))
+
+    st.subheader("Ativos aprovados no setup")
+
+    if len(resultados) == 0:
+        st.warning("Nenhum ativo passou em todos os filtros.")
+    else:
+        df_res = pd.DataFrame(resultados).sort_values("Ativo")
+        st.dataframe(df_res, use_container_width=True)
