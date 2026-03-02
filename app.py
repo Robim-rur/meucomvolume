@@ -113,7 +113,8 @@ def indice_candle_fechado():
     tz = pytz.timezone("America/Sao_Paulo")
     agora = datetime.now(tz).time()
 
-    if agora >= time(19, 0):
+    # >>> travado para 19:15
+    if agora >= time(19, 15):
         return -1
     else:
         return -2
@@ -192,7 +193,6 @@ if st.button("Rodar Scanner"):
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
 
-            # Estocástico semanal
             kw, dw = stochastic_kd(semanal)
             semanal["K"] = kw
             semanal["D"] = dw
@@ -210,7 +210,6 @@ if st.button("Rodar Scanner"):
             cond_sem_dmi   = row_w["DIp"] > row_w["DIm"]
             cond_sem_stoch = row_w["K"] > row_w["D"]
 
-            # >>> agora o semanal exige DMI + ESTOCÁSTICO
             if not (cond_sem_dmi and cond_sem_stoch):
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
