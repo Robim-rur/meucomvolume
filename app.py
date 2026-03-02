@@ -2,6 +2,8 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+from datetime import datetime, time
+import pytz
 
 st.set_page_config(layout="wide")
 st.title("Scanner – Setup Roberson (Diário + Confirmação Semanal)")
@@ -90,6 +92,19 @@ def preparar_semanal(df):
 
     return semanal
 
+def ajustar_para_ultimo_candle_fechado(df):
+
+    tz = pytz.timezone("America/Sao_Paulo")
+    agora = datetime.now(tz)
+    hora_fechamento = time(17, 0)
+
+    # se for dia útil e ainda estiver antes do fechamento,
+    # remove o candle em formação
+    if agora.weekday() < 5 and agora.time() < hora_fechamento:
+        if len(df) > 1:
+            df = df.iloc[:-1]
+
+    return df
 
 # =========================================================
 # Scanner
@@ -111,6 +126,16 @@ if st.button("Rodar Scanner"):
             )
 
             if df.empty or len(df) < 120:
+                progress.progress((i + 1) / len(ativos_scan))
+                continue
+
+            # ----------------------------
+            # Ajuste de candle fechado
+            # ----------------------------
+            df = ajustar_para_ultimo_candle_fechado(df)
+
+            if len(df) < 120:
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             df["EMA69"] = ema(df["Close"], 69)
@@ -127,6 +152,7 @@ if st.button("Rodar Scanner"):
             df_ind = df.dropna(subset=["EMA69","K","D","DIp","DIm","ADX"])
 
             if df_ind.empty:
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             last = df_ind.iloc[-1]
@@ -136,10 +162,11 @@ if st.button("Rodar Scanner"):
             cond_dmi   = last["DIp"] > last["DIm"]
 
             if not (cond_ema and cond_stoch and cond_dmi):
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             # -------------------------
-            # Semanal
+            # Semanal (apenas D+ > D-)
             # -------------------------
 
             semanal = preparar_semanal(df)
@@ -152,21 +179,23 @@ if st.button("Rodar Scanner"):
             semanal_ind = semanal.dropna(subset=["DIp","DIm"])
 
             if semanal_ind.empty:
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             last_w = semanal_ind.iloc[-1]
 
             if not (last_w["DIp"] > last_w["DIm"]):
+                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             resultados.append({
                 "Ativo": ticker,
-                "Close": round(last["Close"], 2),
-                "K": round(last["K"], 2),
-                "D": round(last["D"], 2),
-                "DI+ (D)": round(last["DIp"], 2),
-                "DI- (D)": round(last["DIm"], 2),
-                "ADX (D)": round(last["ADX"], 2)
+                "Close": round(float(last["Close"]), 2),
+                "K": round(float(last["K"]), 2),
+                "D": round(float(last["D"]), 2),
+                "DI+ (D)": round(float(last["DIp"]), 2),
+                "DI- (D)": round(float(last["DIm"]), 2),
+                "ADX (D)": round(float(last["ADX"]), 2)
             })
 
         except:
