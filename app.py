@@ -91,7 +91,7 @@ def preparar_semanal(df):
         "Low": "min",
         "Close": "last",
         "Volume": "sum"
-    }).dropna()
+    })
 
     return semanal
 
@@ -132,11 +132,14 @@ if st.button("Rodar Scanner"):
 
             df_ind = df.dropna(subset=["EMA69","K","D","DIp","DIm","ADX"])
 
-            if df_ind.empty:
+            if len(df_ind) < 2:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            last = df_ind.iloc[-1]
+            # ============================
+            # SEMPRE ÚLTIMO CANDLE FECHADO
+            # ============================
+            last = df_ind.iloc[-2]
 
             cond_ema   = last["Close"] > last["EMA69"]
             cond_stoch = last["K"] > last["D"]
@@ -155,11 +158,14 @@ if st.button("Rodar Scanner"):
 
             semanal_ind = semanal.dropna(subset=["DIp","DIm"])
 
-            if semanal_ind.empty:
+            if len(semanal_ind) < 2:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            last_w = semanal_ind.iloc[-1]
+            # ============================
+            # SEMPRE ÚLTIMA SEMANA FECHADA
+            # ============================
+            last_w = semanal_ind.iloc[-2]
 
             if not (last_w["DIp"] > last_w["DIm"]):
                 progress.progress((i + 1) / len(ativos_scan))
@@ -167,7 +173,7 @@ if st.button("Rodar Scanner"):
 
             resultados.append({
                 "Ativo": ticker,
-                "Close": round(float(last["Close"]), 2),
+                "Close (fechado)": round(float(last["Close"]), 2),
                 "K": round(float(last["K"]), 2),
                 "D": round(float(last["D"]), 2),
                 "DI+ (D)": round(float(last["DIp"]), 2),
