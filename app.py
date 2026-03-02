@@ -41,6 +41,9 @@ ativos_scan = sorted(set([
 def ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
+def rma(series, period):
+    return series.ewm(alpha=1/period, adjust=False).mean()
+
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
 
     low_min = df["Low"].rolling(k_period).min()
@@ -52,17 +55,18 @@ def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
 
     return k_smooth, d
 
-def dmi_adx(df, period=14):
+# -------- DMI / ADX padrão TradingView (Wilder / RMA)
+def dmi_adx_tradingview(df, period=14):
 
     high = df["High"]
     low = df["Low"]
     close = df["Close"]
 
-    up_move = high.diff()
-    down_move = low.shift() - low
+    up = high.diff()
+    down = -low.diff()
 
-    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
+    plus_dm = np.where((up > down) & (up > 0), up, 0.0)
+    minus_dm = np.where((down > up) & (down > 0), down, 0.0)
 
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
@@ -70,13 +74,15 @@ def dmi_adx(df, period=14):
 
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
 
-    atr = tr.rolling(period).mean()
+    tr_rma = rma(tr, period)
+    plus_dm_rma = rma(pd.Series(plus_dm, index=df.index), period)
+    minus_dm_rma = rma(pd.Series(minus_dm, index=df.index), period)
 
-    plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(period).mean() / atr)
-    minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(period).mean() / atr)
+    plus_di = 100 * plus_dm_rma / tr_rma
+    minus_di = 100 * minus_dm_rma / tr_rma
 
     dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
-    adx = dx.rolling(period).mean()
+    adx = rma(dx, period)
 
     return plus_di, minus_di, adx
 
@@ -98,8 +104,6 @@ def ajustar_para_ultimo_candle_fechado(df):
     agora = datetime.now(tz)
     hora_fechamento = time(17, 0)
 
-    # se for dia útil e ainda estiver antes do fechamento,
-    # remove o candle em formação
     if agora.weekday() < 5 and agora.time() < hora_fechamento:
         if len(df) > 1:
             df = df.iloc[:-1]
@@ -122,16 +126,14 @@ if st.button("Rodar Scanner"):
                 ticker,
                 period="420d",
                 interval="1d",
-                progress=False
+                progress=False,
+                auto_adjust=False
             )
 
             if df.empty or len(df) < 120:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            # ----------------------------
-            # Ajuste de candle fechado
-            # ----------------------------
             df = ajustar_para_ultimo_candle_fechado(df)
 
             if len(df) < 120:
@@ -144,7 +146,7 @@ if st.button("Rodar Scanner"):
             df["K"] = k
             df["D"] = d
 
-            di_p, di_m, adx = dmi_adx(df, 14)
+            di_p, di_m, adx = dmi_adx_tradingview(df, 14)
             df["DIp"] = di_p
             df["DIm"] = di_m
             df["ADX"] = adx
@@ -166,12 +168,12 @@ if st.button("Rodar Scanner"):
                 continue
 
             # -------------------------
-            # Semanal (apenas D+ > D-)
+            # Semanal – apenas DI+ > DI-
             # -------------------------
 
             semanal = preparar_semanal(df)
 
-            di_p_w, di_m_w, _ = dmi_adx(semanal, 14)
+            di_p_w, di_m_w, _ = dmi_adx_tradingview(semanal, 14)
 
             semanal["DIp"] = di_p_w
             semanal["DIm"] = di_m_w
