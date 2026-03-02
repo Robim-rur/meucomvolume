@@ -16,6 +16,17 @@ ativos_teste = [
     "VALE3.SA"
 ]
 
+def ajustar_colunas(df):
+    # corrige retorno estranho do yfinance (MultiIndex / colunas 2D)
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
+    for col in df.columns:
+        if isinstance(df[col], pd.DataFrame):
+            df[col] = df[col].iloc[:, 0]
+
+    return df
+
 def ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
@@ -92,7 +103,12 @@ if st.button("Rodar diagnóstico"):
                 auto_adjust=False
             )
 
-            if df.empty or len(df) < 100:
+            if df.empty:
+                continue
+
+            df = ajustar_colunas(df)
+
+            if len(df) < 100:
                 continue
 
             df["EMA69"] = ema(df["Close"], 69)
@@ -106,10 +122,11 @@ if st.button("Rodar diagnóstico"):
             df["DIm"] = di_m
             df["ADX"] = adx
 
-            # candle fechado
+            # candle diário fechado
             row = df.iloc[-2]
 
             semanal = preparar_semanal(df)
+            semanal = ajustar_colunas(semanal)
 
             di_pw, di_mw, _ = dmi_adx_tradingview(semanal)
             semanal["DIp"] = di_pw
@@ -125,20 +142,20 @@ if st.button("Rodar diagnóstico"):
                 "DI+ > DI- (D)": row["DIp"] > row["DIm"],
                 "DI+ > DI- (W)": row_w["DIp"] > row_w["DIm"],
 
-                "Close": round(row["Close"], 2),
-                "EMA69": round(row["EMA69"], 2),
-                "K": round(row["K"], 2),
-                "D": round(row["D"], 2),
-                "DI+ D": round(row["DIp"], 2),
-                "DI- D": round(row["DIm"], 2),
-                "DI+ W": round(row_w["DIp"], 2),
-                "DI- W": round(row_w["DIm"], 2),
+                "Close": round(float(row["Close"]), 2),
+                "EMA69": round(float(row["EMA69"]), 2),
+                "K": round(float(row["K"]), 2),
+                "D": round(float(row["D"]), 2),
+                "DI+ D": round(float(row["DIp"]), 2),
+                "DI- D": round(float(row["DIm"]), 2),
+                "DI+ W": round(float(row_w["DIp"]), 2),
+                "DI- W": round(float(row_w["DIm"]), 2),
             })
 
         except Exception as e:
             linhas.append({
                 "Ativo": ticker,
-                "erro": str(e)
+                "Erro": str(e)
             })
 
     df_diag = pd.DataFrame(linhas)
