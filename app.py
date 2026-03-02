@@ -17,7 +17,7 @@ ativos_teste = [
 ]
 
 def ajustar_colunas(df):
-    # corrige retorno estranho do yfinance (MultiIndex / colunas 2D)
+
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
 
@@ -27,11 +27,14 @@ def ajustar_colunas(df):
 
     return df
 
+
 def ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
+
 def rma(series, period):
     return series.ewm(alpha=1/period, adjust=False).mean()
+
 
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
 
@@ -43,6 +46,7 @@ def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
     d = k_smooth.rolling(d_period).mean()
 
     return k_smooth, d
+
 
 def dmi_adx_tradingview(df, period=14):
 
@@ -73,6 +77,7 @@ def dmi_adx_tradingview(df, period=14):
     adx = rma(dx, period)
 
     return plus_di, minus_di, adx
+
 
 def preparar_semanal(df):
 
@@ -108,8 +113,12 @@ if st.button("Rodar diagnóstico"):
 
             df = ajustar_colunas(df)
 
-            if len(df) < 100:
+            if len(df) < 120:
                 continue
+
+            # ===============================
+            # Indicadores diários
+            # ===============================
 
             df["EMA69"] = ema(df["Close"], 69)
 
@@ -122,8 +131,19 @@ if st.button("Rodar diagnóstico"):
             df["DIm"] = di_m
             df["ADX"] = adx
 
+            # ===============================
+            # Volume
+            # ===============================
+
+            df["Vol_MA20"] = df["Volume"].rolling(20).mean()
+            df["Vol_MA50"] = df["Volume"].rolling(50).mean()
+
             # candle diário fechado
             row = df.iloc[-2]
+
+            # ===============================
+            # Semanal
+            # ===============================
 
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
@@ -135,21 +155,38 @@ if st.button("Rodar diagnóstico"):
             row_w = semanal.iloc[-2]
 
             linhas.append({
+
                 "Ativo": ticker,
                 "Data diário": df.index[-2].date(),
+
                 "Close > EMA69": row["Close"] > row["EMA69"],
                 "K > D": row["K"] > row["D"],
                 "DI+ > DI- (D)": row["DIp"] > row["DIm"],
                 "DI+ > DI- (W)": row_w["DIp"] > row_w["DIm"],
 
+                # >>> NOVO FILTRO DE VOLUME
+                "Vol MA20 > MA50": row["Vol_MA20"] > row["Vol_MA50"],
+
+                # ===============================
+                # Valores
+                # ===============================
+
                 "Close": round(float(row["Close"]), 2),
                 "EMA69": round(float(row["EMA69"]), 2),
+
                 "K": round(float(row["K"]), 2),
                 "D": round(float(row["D"]), 2),
+
                 "DI+ D": round(float(row["DIp"]), 2),
                 "DI- D": round(float(row["DIm"]), 2),
+
                 "DI+ W": round(float(row_w["DIp"]), 2),
                 "DI- W": round(float(row_w["DIm"]), 2),
+
+                # >>> valores do volume
+                "Volume": int(row["Volume"]),
+                "Vol MA20": round(float(row["Vol_MA20"]), 0),
+                "Vol MA50": round(float(row["Vol_MA50"]), 0),
             })
 
         except Exception as e:
