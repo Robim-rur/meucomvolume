@@ -113,7 +113,8 @@ def indice_candle_fechado():
     tz = pytz.timezone("America/Sao_Paulo")
     agora = datetime.now(tz).time()
 
-    if agora >= time(18, 30):
+    # >>> ajuste solicitado: 19:00
+    if agora >= time(19, 0):
         return -1
     else:
         return -2
@@ -202,19 +203,28 @@ if st.button("Rodar Scanner"):
 
             row_w = semanal.iloc[idx]
 
-            if not (row_w["DIp"] > row_w["DIm"]):
+            cond_sem = row_w["DIp"] > row_w["DIm"]
+
+            if not cond_sem:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             resultados.append({
                 "Ativo": ticker,
                 "Data": df.index[idx].date(),
+
                 "Close": round(float(row["Close"]), 2),
                 "K": round(float(row["K"]), 2),
                 "D": round(float(row["D"]), 2),
+
                 "DI+ (D)": round(float(row["DIp"]), 2),
                 "DI- (D)": round(float(row["DIm"]), 2),
                 "ADX (D)": round(float(row["ADX"]), 2),
+
+                "DI+ (W)": round(float(row_w["DIp"]), 2),
+                "DI- (W)": round(float(row_w["DIm"]), 2),
+                "DI+ > DI- (W)": cond_sem,
+
                 "Vol MA20": round(float(row["Vol_MA20"]), 0),
                 "Vol MA50": round(float(row["Vol_MA50"]), 0),
                 "Vol MA20 > MA50": cond_vol
