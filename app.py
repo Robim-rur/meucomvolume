@@ -40,6 +40,7 @@ def ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
+
     low_min = df["Low"].rolling(k_period).min()
     high_max = df["High"].rolling(k_period).max()
 
@@ -97,7 +98,6 @@ def preparar_semanal(df):
 if st.button("Rodar Scanner"):
 
     resultados = []
-
     progress = st.progress(0.0)
 
     for i, ticker in enumerate(ativos_scan):
@@ -113,9 +113,6 @@ if st.button("Rodar Scanner"):
             if df.empty or len(df) < 120:
                 continue
 
-            # -------------------------
-            # Diário
-            # -------------------------
             df["EMA69"] = ema(df["Close"], 69)
 
             k, d = stochastic_kd(df, 14, 3, 3)
@@ -127,7 +124,12 @@ if st.button("Rodar Scanner"):
             df["DIm"] = di_m
             df["ADX"] = adx
 
-            last = df.iloc[-1]
+            df_ind = df.dropna(subset=["EMA69","K","D","DIp","DIm","ADX"])
+
+            if df_ind.empty:
+                continue
+
+            last = df_ind.iloc[-1]
 
             cond_ema   = last["Close"] > last["EMA69"]
             cond_stoch = last["K"] > last["D"]
@@ -137,19 +139,22 @@ if st.button("Rodar Scanner"):
                 continue
 
             # -------------------------
-            # Semanal (apenas DI+ > DI-)
+            # Semanal
             # -------------------------
-            semanal = preparar_semanal(df)
 
-            if len(semanal) < 30:
-                continue
+            semanal = preparar_semanal(df)
 
             di_p_w, di_m_w, _ = dmi_adx(semanal, 14)
 
             semanal["DIp"] = di_p_w
             semanal["DIm"] = di_m_w
 
-            last_w = semanal.iloc[-1]
+            semanal_ind = semanal.dropna(subset=["DIp","DIm"])
+
+            if semanal_ind.empty:
+                continue
+
+            last_w = semanal_ind.iloc[-1]
 
             if not (last_w["DIp"] > last_w["DIm"]):
                 continue
