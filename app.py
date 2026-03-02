@@ -1,5 +1,3 @@
-# app.py
-
 import streamlit as st
 import yfinance as yf
 import pandas as pd
@@ -9,7 +7,7 @@ st.set_page_config(layout="wide")
 st.title("Scanner – Setup Roberson (Diário + Confirmação Semanal)")
 
 # =========================================================
-# LISTA FIXA DE ATIVOS (178)
+# LISTA FIXA DE ATIVOS
 # =========================================================
 
 ativos_scan = sorted(set([
@@ -35,7 +33,7 @@ ativos_scan = sorted(set([
 ]))
 
 # =========================================================
-# Funções auxiliares
+# Funções
 # =========================================================
 
 def ema(series, period):
@@ -57,11 +55,11 @@ def dmi_adx(df, period=14):
     low = df["Low"]
     close = df["Close"]
 
-    plus_dm = high.diff()
-    minus_dm = low.diff().abs()
+    up_move = high.diff()
+    down_move = low.shift() - low
 
-    plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0.0)
-    minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0.0)
+    plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
+    minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
 
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
@@ -71,17 +69,17 @@ def dmi_adx(df, period=14):
 
     atr = tr.rolling(period).mean()
 
-    plus_di = 100 * (pd.Series(plus_dm).rolling(period).mean() / atr)
-    minus_di = 100 * (pd.Series(minus_dm).rolling(period).mean() / atr)
+    plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(period).mean() / atr)
+    minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(period).mean() / atr)
 
     dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
     adx = dx.rolling(period).mean()
 
     return plus_di, minus_di, adx
 
-def preparar_semanal(df_diario):
+def preparar_semanal(df):
 
-    semanal = df_diario.resample("W-FRI").agg({
+    semanal = df.resample("W-FRI").agg({
         "Open": "first",
         "High": "max",
         "Low": "min",
@@ -100,14 +98,14 @@ if st.button("Rodar Scanner"):
 
     resultados = []
 
-    progress = st.progress(0)
+    progress = st.progress(0.0)
 
     for i, ticker in enumerate(ativos_scan):
 
         try:
             df = yf.download(
                 ticker,
-                period="400d",
+                period="420d",
                 interval="1d",
                 progress=False
             )
@@ -124,45 +122,36 @@ if st.button("Rodar Scanner"):
             df["K"] = k
             df["D"] = d
 
-            di_plus, di_minus, adx = dmi_adx(df, 14)
-            df["DIp"] = di_plus
-            df["DIm"] = di_minus
+            di_p, di_m, adx = dmi_adx(df, 14)
+            df["DIp"] = di_p
+            df["DIm"] = di_m
             df["ADX"] = adx
-
-            df["VolSMA20"] = df["Volume"].rolling(20).mean()
-            df["VolSMA50"] = df["Volume"].rolling(50).mean()
 
             last = df.iloc[-1]
 
-            # -------------------------
-            # Filtros diário
-            # -------------------------
-            cond_ema = last["Close"] > last["EMA69"]
+            cond_ema   = last["Close"] > last["EMA69"]
             cond_stoch = last["K"] > last["D"]
-            cond_dmi = last["DIp"] > last["DIm"]
-            cond_vol = last["VolSMA20"] > last["VolSMA50"]
+            cond_dmi   = last["DIp"] > last["DIm"]
 
-            if not (cond_ema and cond_stoch and cond_dmi and cond_vol):
+            if not (cond_ema and cond_stoch and cond_dmi):
                 continue
 
             # -------------------------
-            # Semanal
+            # Semanal (apenas DI+ > DI-)
             # -------------------------
             semanal = preparar_semanal(df)
 
             if len(semanal) < 30:
                 continue
 
-            di_p_w, di_m_w, adx_w = dmi_adx(semanal, 14)
+            di_p_w, di_m_w, _ = dmi_adx(semanal, 14)
 
             semanal["DIp"] = di_p_w
             semanal["DIm"] = di_m_w
 
             last_w = semanal.iloc[-1]
 
-            cond_semanal = last_w["DIp"] > last_w["DIm"]
-
-            if not cond_semanal:
+            if not (last_w["DIp"] > last_w["DIm"]):
                 continue
 
             resultados.append({
@@ -172,12 +161,10 @@ if st.button("Rodar Scanner"):
                 "D": round(last["D"], 2),
                 "DI+ (D)": round(last["DIp"], 2),
                 "DI- (D)": round(last["DIm"], 2),
-                "ADX (D)": round(last["ADX"], 2),
-                "VolSMA20": round(last["VolSMA20"], 0),
-                "VolSMA50": round(last["VolSMA50"], 0)
+                "ADX (D)": round(last["ADX"], 2)
             })
 
-        except Exception:
+        except:
             pass
 
         progress.progress((i + 1) / len(ativos_scan))
