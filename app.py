@@ -9,7 +9,7 @@ st.set_page_config(layout="wide")
 st.title("Scanner – Setup Roberson (Diário + Semanal / TradingView)")
 
 # =========================================================
-# LISTA FIXA DE ATIVOS
+# LISTA FIXA DE ATIVOS (220 ATIVOS - ORIGINAL + ADIÇÕES DE LIQUIDEZ)
 # =========================================================
 
 ativos_scan = sorted(set([
@@ -31,7 +31,13 @@ ativos_scan = sorted(set([
 "VZUA34.SA","ABTT34.SA","AMGN34.SA","AXPB34.SA","BAOO34.SA","CATP34.SA","HONB34.SA","BOVA11.SA","IVVB11.SA",
 "SMAL11.SA","HASH11.SA","GOLD11.SA","GARE11.SA","HGLG11.SA","XPLG11.SA","VILG11.SA","BRCO11.SA","BTLG11.SA",
 "XPML11.SA","VISC11.SA","HSML11.SA","MALL11.SA","KNRI11.SA","JSRE11.SA","PVBI11.SA","HGRE11.SA","MXRF11.SA",
-"KNCR11.SA","KNIP11.SA","CPTS11.SA","IRDM11.SA","DIVO11.SA","NDIV11.SA","SPUB11.SA"
+"KNCR11.SA","KNIP11.SA","CPTS11.SA","IRDM11.SA","DIVO11.SA","NDIV11.SA","SPUB11.SA",
+# --- NOVAS ADIÇÕES DE ALTA LIQUIDEZ ---
+"AMBP3.SA","SIMH3.SA","MDIA3.SA","GRND3.SA","LEVE3.SA","TASA4.SA","VULC3.SA","AESB3.SA","POMO4.SA","STBP3.SA",
+"COCA34.SA","MCDC34.SA","GMEG34.SA","TGAR11.SA","TRXF11.SA","HGRU11.SA","ALZR11.SA","XPCA11.SA","VGIA11.SA",
+"RBRR11.SA","KNSC11.SA","CACR11.SA","HABT11.SA","DEVA11.SA","HGCR11.SA","MCCI11.SA","RECR11.SA","VRTA11.SA",
+"BCFF11.SA","HFOF11.SA","XPSF11.SA","RBRP11.SA","RBRF11.SA","BICE34.SA","BERK34.SA","JPMC34.SA","GOGL35.SA",
+"URIT11.SA","RZTR11.SA","RURA11.SA","VGIR11.SA","CVBI11.SA"
 ]))
 
 # =========================================================
