@@ -61,48 +61,35 @@ def rma(series, period):
     return series.ewm(alpha=1/period, adjust=False).mean()
 
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
-
     low_min = df["Low"].rolling(k_period).min()
     high_max = df["High"].rolling(k_period).max()
-
     k = 100 * (df["Close"] - low_min) / (high_max - low_min)
     k_smooth = k.rolling(smooth).mean()
     d = k_smooth.rolling(d_period).mean()
-
     return k_smooth, d
 
 def dmi_adx_tradingview(df, period=14):
-
     high = df["High"]
     low = df["Low"]
     close = df["Close"]
-
     up = high.diff()
     down = -low.diff()
-
     plus_dm = np.where((up > down) & (up > 0), up, 0.0)
     minus_dm = np.where((down > up) & (down > 0), down, 0.0)
-
     tr1 = high - low
     tr2 = (high - close.shift()).abs()
     tr3 = (low - close.shift()).abs()
-
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
     tr_rma = rma(tr, period)
     plus_dm_rma = rma(pd.Series(plus_dm, index=df.index), period)
     minus_dm_rma = rma(pd.Series(minus_dm, index=df.index), period)
-
     plus_di = 100 * plus_dm_rma / tr_rma
     minus_di = 100 * minus_dm_rma / tr_rma
-
     dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
     adx = rma(dx, period)
-
     return plus_di, minus_di, adx
 
 def preparar_semanal(df):
-
     semanal = df.resample("W-FRI").agg({
         "Open": "first",
         "High": "max",
@@ -110,21 +97,7 @@ def preparar_semanal(df):
         "Close": "last",
         "Volume": "sum"
     })
-
     return semanal
-
-
-def indice_candle_fechado():
-
-    tz = pytz.timezone("America/Sao_Paulo")
-    agora = datetime.now(tz).time()
-
-    # >>> travado para 19:15
-    if agora >= time(19, 15):
-        return -1
-    else:
-        return -2
-
 
 # =========================================================
 # Scanner
@@ -135,12 +108,11 @@ if st.button("Rodar Scanner"):
     resultados = []
     progress = st.progress(0.0)
 
-    idx = indice_candle_fechado()
+    # Corrigido: idx -1 sempre pega o último candle fechado disponível no Yahoo Finance
+    idx = -1 
 
     for i, ticker in enumerate(ativos_scan):
-
         try:
-
             df = yf.download(
                 ticker,
                 period="450d",
@@ -150,35 +122,26 @@ if st.button("Rodar Scanner"):
             )
 
             if df.empty:
-                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             df = ajustar_colunas(df)
 
             if len(df) < 120:
-                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            # =========================
             # Diário
-            # =========================
-
             df["EMA69"] = ema(df["Close"], 69)
-
             k, d = stochastic_kd(df)
             df["K"] = k
             df["D"] = d
-
             di_p, di_m, adx = dmi_adx_tradingview(df)
             df["DIp"] = di_p
             df["DIm"] = di_m
             df["ADX"] = adx
-
             df["Vol_MA20"] = df["Volume"].rolling(20).mean()
             df["Vol_MA50"] = df["Volume"].rolling(50).mean()
 
-            if len(df.dropna()) < abs(idx):
-                progress.progress((i + 1) / len(ativos_scan))
+            if len(df.dropna()) < 10:
                 continue
 
             row = df.iloc[idx]
@@ -189,26 +152,19 @@ if st.button("Rodar Scanner"):
             cond_vol   = row["Vol_MA20"] > row["Vol_MA50"]
 
             if not (cond_ema and cond_stoch and cond_dmi and cond_vol):
-                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            # =========================
             # Semanal
-            # =========================
-
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
-
             kw, dw = stochastic_kd(semanal)
             semanal["K"] = kw
             semanal["D"] = dw
-
             di_pw, di_mw, _ = dmi_adx_tradingview(semanal)
             semanal["DIp"] = di_pw
             semanal["DIm"] = di_mw
 
-            if len(semanal.dropna()) < abs(idx):
-                progress.progress((i + 1) / len(ativos_scan))
+            if len(semanal.dropna()) < 2:
                 continue
 
             row_w = semanal.iloc[idx]
@@ -217,29 +173,23 @@ if st.button("Rodar Scanner"):
             cond_sem_stoch = row_w["K"] > row_w["D"]
 
             if not (cond_sem_dmi and cond_sem_stoch):
-                progress.progress((i + 1) / len(ativos_scan))
                 continue
 
             resultados.append({
                 "Ativo": ticker,
                 "Data": df.index[idx].date(),
-
                 "Close": round(float(row["Close"]), 2),
                 "K (D)": round(float(row["K"]), 2),
                 "D (D)": round(float(row["D"]), 2),
-
                 "DI+ (D)": round(float(row["DIp"]), 2),
                 "DI- (D)": round(float(row["DIm"]), 2),
                 "ADX (D)": round(float(row["ADX"]), 2),
-
                 "K (W)": round(float(row_w["K"]), 2),
                 "D (W)": round(float(row_w["D"]), 2),
                 "K > D (W)": cond_sem_stoch,
-
                 "DI+ (W)": round(float(row_w["DIp"]), 2),
                 "DI- (W)": round(float(row_w["DIm"]), 2),
                 "DI+ > DI- (W)": cond_sem_dmi,
-
                 "Vol MA20": round(float(row["Vol_MA20"]), 0),
                 "Vol MA50": round(float(row["Vol_MA50"]), 0),
                 "Vol MA20 > MA50": cond_vol
@@ -247,8 +197,8 @@ if st.button("Rodar Scanner"):
 
         except Exception:
             pass
-
-        progress.progress((i + 1) / len(ativos_scan))
+        finally:
+            progress.progress((i + 1) / len(ativos_scan))
 
     st.subheader("Ativos aprovados no setup")
 
