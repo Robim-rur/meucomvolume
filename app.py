@@ -88,9 +88,8 @@ if st.button("Rodar Scanner"):
     resultados = []
     progress = st.progress(0.0)
     
-    # Define limite de 3 dias para considerar o dado como "atual"
-    hoje = datetime.now().date()
-    limite_data = hoje - timedelta(days=3)
+    # Limite de 5 dias para evitar problemas com feriados
+    limite_data = datetime.now().date() - timedelta(days=5)
 
     for i, ticker in enumerate(ativos_scan):
         try:
@@ -99,13 +98,12 @@ if st.button("Rodar Scanner"):
             df = ajustar_colunas(df)
             if len(df) < 120: continue
 
-            # --- VALIDAÇÃO DE DATA ---
-            # Se a data do último candle for mais antiga que o limite, pula o ativo
+            # Validação de data para evitar ativos desatualizados (como PETZ3 em 06/01)
             data_ultimo_candle = df.index[-1].date()
             if data_ultimo_candle < limite_data:
                 continue
 
-            # Diário
+            # Cálculo Diário
             df["EMA69"] = ema(df["Close"], 69)
             df["K"], df["D"] = stochastic_kd(df)
             df["DIp"], df["DIm"], df["ADX"] = dmi_adx_tradingview(df)
@@ -113,20 +111,32 @@ if st.button("Rodar Scanner"):
             df["Vol_MA50"] = df["Volume"].rolling(50).mean()
 
             row = df.iloc[-1]
-            if not (row["Close"] > row["EMA69"] and row["K"] > row["D"] and 
-                    row["DIp"] > row["DIm"] and row["Vol_MA20"] > row["Vol_MA50"]):
+            
+            # Filtros Diários
+            cond_ema   = row["Close"] > row["EMA69"]
+            cond_stoch = row["K"] > row["D"]
+            cond_dmi   = row["DIp"] > row["DIm"]
+            cond_vol   = row["Vol_MA20"] > row["Vol_MA50"]
+
+            if not (cond_ema and cond_stoch and cond_dmi and cond_vol):
                 continue
 
-            # Semanal
+            # Cálculo Semanal
             semanal = preparar_semanal(df)
             semanal = ajustar_colunas(semanal)
             semanal["K"], semanal["D"] = stochastic_kd(semanal)
             semanal["DIp"], semanal["DIm"], _ = dmi_adx_tradingview(semanal)
 
             row_w = semanal.iloc[-1]
-            if not (row_w["DIp"] > row_w["DIm"] and row_w["K"] > row_w["D"]):
+            
+            # Filtros Semanais
+            cond_sem_dmi   = row_w["DIp"] > row_w["DIm"]
+            cond_sem_stoch = row_w["K"] > row_w["D"]
+
+            if not (cond_sem_dmi and cond_sem_stoch):
                 continue
 
+            # Montagem do Resultado Completo (Restaurando as colunas originais)
             resultados.append({
                 "Ativo": ticker,
                 "Data": data_ultimo_candle,
@@ -134,18 +144,27 @@ if st.button("Rodar Scanner"):
                 "K (D)": round(float(row["K"]), 2),
                 "D (D)": round(float(row["D"]), 2),
                 "DI+ (D)": round(float(row["DIp"]), 2),
+                "DI- (D)": round(float(row["DIm"]), 2),
                 "ADX (D)": round(float(row["ADX"]), 2),
                 "K (W)": round(float(row_w["K"]), 2),
                 "D (W)": round(float(row_w["D"]), 2),
+                "K > D (W)": cond_sem_stoch,
                 "DI+ (W)": round(float(row_w["DIp"]), 2),
-                "Vol MA20 > MA50": True
+                "DI- (W)": round(float(row_w["DIm"]), 2),
+                "DI+ > DI- (W)": cond_sem_dmi,
+                "Vol MA20": round(float(row["Vol_MA20"]), 0),
+                "Vol MA50": round(float(row["Vol_MA50"]), 0),
+                "Vol MA20 > MA50": cond_vol
             })
 
-        except Exception: pass
-        finally: progress.progress((i + 1) / len(ativos_scan))
+        except Exception:
+            pass
+        finally:
+            progress.progress((i + 1) / len(ativos_scan))
 
     st.subheader("Ativos aprovados no setup")
     if not resultados:
-        st.warning("Nenhum ativo atualizado passou nos filtros.")
+        st.warning("Nenhum ativo passou nos filtros técnicos hoje.")
     else:
-        st.dataframe(pd.DataFrame(resultados).sort_values("Ativo"), use_container_width=True)
+        df_res = pd.DataFrame(resultados).sort_values("Ativo")
+        st.dataframe(df_res, use_container_width=True)
