@@ -41,9 +41,11 @@ ativos_scan = sorted(set([
 def ajustar_colunas(df):
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
+
     for col in df.columns:
         if isinstance(df[col], pd.DataFrame):
             df[col] = df[col].iloc[:, 0]
+
     return df
 
 def ema(series, period):
@@ -53,14 +55,18 @@ def rma(series, period):
     return series.ewm(alpha=1/period, adjust=False).mean()
 
 def stochastic_kd(df, k_period=14, d_period=3, smooth=3):
+
     low_min = df["Low"].rolling(k_period).min()
     high_max = df["High"].rolling(k_period).max()
+
     k = 100 * (df["Close"] - low_min) / (high_max - low_min)
     k_smooth = k.rolling(smooth).mean()
     d = k_smooth.rolling(d_period).mean()
+
     return k_smooth, d
 
 def dmi_adx_tradingview(df, period=14):
+
     high = df["High"]
     low = df["Low"]
     close = df["Close"]
@@ -90,6 +96,7 @@ def dmi_adx_tradingview(df, period=14):
     return plus_di, minus_di, adx
 
 def preparar_semanal(df):
+
     semanal = df.resample("W-FRI").agg({
         "Open": "first",
         "High": "max",
@@ -97,100 +104,21 @@ def preparar_semanal(df):
         "Close": "last",
         "Volume": "sum"
     })
+
     return semanal
 
+
 def indice_candle_fechado():
+
     tz = pytz.timezone("America/Sao_Paulo")
     agora = datetime.now(tz).time()
+
+    # >>> travado para 19:15
     if agora >= time(19, 15):
         return -1
     else:
         return -2
 
-# =========================================================
-# Classificação do ativo
-# =========================================================
-
-def classificar_ativo(ticker):
-
-    if ticker.endswith("34.SA"):
-        return "BDR"
-
-    if ticker.endswith("11.SA"):
-        etfs = ["BOVA11.SA","IVVB11.SA","SMAL11.SA","HASH11.SA","DIVO11.SA","NDIV11.SA","SPUB11.SA"]
-        if ticker in etfs:
-            return "ETF"
-        else:
-            return "OUTRO"
-
-    return "ACAO"
-
-def parametros_trade(tipo):
-
-    if tipo == "ACAO":
-        return 0.08, 0.05
-    if tipo == "BDR":
-        return 0.06, 0.04
-    if tipo == "ETF":
-        return 0.05, 0.03
-
-    return None, None
-
-# =========================================================
-# Estatística condicional ao setup
-# =========================================================
-
-def calcular_estatistica(df, semanal, lookback=756):
-
-    ganhos = 0
-    perdas = 0
-    total = 0
-
-    df = df.copy()
-    semanal = semanal.copy()
-
-    semanal_idx = semanal.index
-
-    start = max(0, len(df) - lookback - 10)
-
-    for i in range(start, len(df) - 2):
-
-        row = df.iloc[i]
-
-        if pd.isna(row["EMA69"]) or pd.isna(row["K"]) or pd.isna(row["DIp"]) or pd.isna(row["Vol_MA20"]):
-            continue
-
-        cond_ema   = row["Close"] > row["EMA69"]
-        cond_stoch = row["K"] > row["D"]
-        cond_dmi   = row["DIp"] > row["DIm"]
-        cond_vol   = row["Vol_MA20"] > row["Vol_MA50"]
-
-        if not (cond_ema and cond_stoch and cond_dmi and cond_vol):
-            continue
-
-        data_d = df.index[i]
-        pos_w = semanal_idx.searchsorted(data_d, side="right") - 1
-
-        if pos_w < 0:
-            continue
-
-        row_w = semanal.iloc[pos_w]
-
-        if pd.isna(row_w["K"]) or pd.isna(row_w["DIp"]):
-            continue
-
-        cond_sem_stoch = row_w["K"] > row_w["D"]
-        cond_sem_dmi   = row_w["DIp"] > row_w["DIm"]
-
-        if not (cond_sem_stoch and cond_sem_dmi):
-            continue
-
-        entrada = row["Close"]
-
-        tipo = classificar_ativo("X")
-        total += 1
-
-    return total
 
 # =========================================================
 # Scanner
@@ -209,7 +137,7 @@ if st.button("Rodar Scanner"):
 
             df = yf.download(
                 ticker,
-                period="1200d",
+                period="450d",
                 interval="1d",
                 progress=False,
                 auto_adjust=False
@@ -221,7 +149,7 @@ if st.button("Rodar Scanner"):
 
             df = ajustar_colunas(df)
 
-            if len(df) < 300:
+            if len(df) < 120:
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
@@ -273,11 +201,11 @@ if st.button("Rodar Scanner"):
             semanal["DIp"] = di_pw
             semanal["DIm"] = di_mw
 
-            if len(semanal.dropna()) < 10:
+            if len(semanal.dropna()) < abs(idx):
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            row_w = semanal.iloc[-1 if idx == -1 else -2]
+            row_w = semanal.iloc[idx]
 
             cond_sem_dmi   = row_w["DIp"] > row_w["DIm"]
             cond_sem_stoch = row_w["K"] > row_w["D"]
@@ -286,93 +214,11 @@ if st.button("Rodar Scanner"):
                 progress.progress((i + 1) / len(ativos_scan))
                 continue
 
-            # =========================
-            # Estatística
-            # =========================
-
-            tipo = classificar_ativo(ticker)
-            gain, loss = parametros_trade(tipo)
-
-            ganhos = 0
-            perdas = 0
-            total  = 0
-
-            semanal_idx = semanal.index
-
-            lookback = 756
-            start = max(0, len(df) - lookback - 10)
-
-            for j in range(start, len(df) - 2):
-
-                r = df.iloc[j]
-
-                if pd.isna(r["EMA69"]) or pd.isna(r["K"]) or pd.isna(r["DIp"]) or pd.isna(r["Vol_MA20"]):
-                    continue
-
-                c1 = r["Close"] > r["EMA69"]
-                c2 = r["K"] > r["D"]
-                c3 = r["DIp"] > r["DIm"]
-                c4 = r["Vol_MA20"] > r["Vol_MA50"]
-
-                if not (c1 and c2 and c3 and c4):
-                    continue
-
-                data_d = df.index[j]
-                pos_w = semanal_idx.searchsorted(data_d, side="right") - 1
-
-                if pos_w < 0:
-                    continue
-
-                rw = semanal.iloc[pos_w]
-
-                if pd.isna(rw["K"]) or pd.isna(rw["DIp"]):
-                    continue
-
-                c5 = rw["K"] > rw["D"]
-                c6 = rw["DIp"] > rw["DIm"]
-
-                if not (c5 and c6):
-                    continue
-
-                entrada = r["Close"]
-
-                alvo_gain = entrada * (1 + gain)
-                alvo_loss = entrada * (1 - loss)
-
-                hit = None
-
-                for k2 in range(j + 1, len(df)):
-
-                    hi = df["High"].iloc[k2]
-                    lo = df["Low"].iloc[k2]
-
-                    if hi >= alvo_gain:
-                        hit = "gain"
-                        break
-
-                    if lo <= alvo_loss:
-                        hit = "loss"
-                        break
-
-                if hit is None:
-                    continue
-
-                total += 1
-
-                if hit == "gain":
-                    ganhos += 1
-                else:
-                    perdas += 1
-
-            prob = round(100 * ganhos / total, 2) if total > 0 else np.nan
-
             resultados.append({
                 "Ativo": ticker,
-                "Tipo": tipo,
                 "Data": df.index[idx].date(),
 
                 "Close": round(float(row["Close"]), 2),
-
                 "K (D)": round(float(row["K"]), 2),
                 "D (D)": round(float(row["D"]), 2),
 
@@ -382,15 +228,15 @@ if st.button("Rodar Scanner"):
 
                 "K (W)": round(float(row_w["K"]), 2),
                 "D (W)": round(float(row_w["D"]), 2),
+                "K > D (W)": cond_sem_stoch,
 
                 "DI+ (W)": round(float(row_w["DIp"]), 2),
                 "DI- (W)": round(float(row_w["DIm"]), 2),
+                "DI+ > DI- (W)": cond_sem_dmi,
 
                 "Vol MA20": round(float(row["Vol_MA20"]), 0),
                 "Vol MA50": round(float(row["Vol_MA50"]), 0),
-
-                "Amostras estatística": total,
-                "Prob. gain antes do loss (%)": prob
+                "Vol MA20 > MA50": cond_vol
             })
 
         except Exception:
@@ -403,5 +249,5 @@ if st.button("Rodar Scanner"):
     if len(resultados) == 0:
         st.warning("Nenhum ativo passou em todos os filtros.")
     else:
-        df_res = pd.DataFrame(resultados).sort_values("Prob. gain antes do loss (%)", ascending=False)
+        df_res = pd.DataFrame(resultados).sort_values("Ativo")
         st.dataframe(df_res, use_container_width=True)
